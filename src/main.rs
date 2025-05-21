@@ -1,4 +1,6 @@
-use cranelift::codegen::control::ControlPlane;
+use std::fs::File;
+use std::io::Write;
+
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
 
 use cranelift::{
@@ -10,6 +12,8 @@ use cranelift::{
 };
 
 use cranelift::codegen::{Context, settings};
+use cranelift_module::{Linkage, Module};
+use cranelift_object::{ObjectBuilder, ObjectModule};
 
 fn run_program(code_buffer: &[u8]) {
     let mut buffer = memmap2::MmapOptions::new()
@@ -26,12 +30,22 @@ fn run_program(code_buffer: &[u8]) {
     println!("out: {}", x);
 }
 
+fn dump_to_binary() {
+    // read binary with:
+    // `/opt/homebrew/opt/binutils/bin/gobjdump -D -b binary -m aarch64 dump.bin`
+
+    // let mut ctx = Context::for_function(func);
+    // let code = ctx.compile(&*isa, &mut ControlPlane::default()).unwrap();
+
+    // std::fs::write("dump.bin", code.code_buffer()).unwrap();
+}
+
 fn test() {
     let mut sig = Signature::new(CallConv::SystemV);
     sig.params.push(AbiParam::new(types::I64));
     sig.returns.push(AbiParam::new(types::I64));
 
-    let mut func = Function::with_name_signature(UserFuncName::default(), sig);
+    let mut func = Function::with_name_signature(UserFuncName::default(), sig.clone());
 
     let mut func_ctx = FunctionBuilderContext::new();
     let mut builder = FunctionBuilder::new(&mut func, &mut func_ctx);
@@ -57,13 +71,30 @@ fn test() {
     });
     let isa = isa_builder.finish(settings::Flags::new(builder)).unwrap();
 
-    let mut ctx = Context::for_function(func);
-    let code = ctx.compile(&*isa, &mut ControlPlane::default()).unwrap();
+    let mut obj_module = ObjectModule::new(
+        ObjectBuilder::new(
+            isa.clone(),
+            "main_module_name", // Arbitrary internal name for the object module
+            cranelift_module::default_libcall_names(),
+        )
+        .unwrap(),
+    );
 
-    std::fs::write("dump.bin", code.code_buffer()).unwrap();
+    let func_id = obj_module
+        .declare_function("tempo_entry", Linkage::Export, &sig)
+        .unwrap();
+    let mut ctx = Context::for_function(func);
+    obj_module.define_function(func_id, &mut ctx).unwrap();
+
+    let product = obj_module.finish();
+    let obj_bytes = product.emit().unwrap();
+
+    File::create("tempo.o")
+        .unwrap()
+        .write_all(&obj_bytes)
+        .unwrap();
 }
 
 fn main() {
-    println!("Hello, world!");
     test();
 }

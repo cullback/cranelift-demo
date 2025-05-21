@@ -1,4 +1,10 @@
+# Cranelift demo
 
-```
-/opt/homebrew/opt/binutils/bin/gobjdump -D -b binary -m aarch64 dump.bin
+Compile a function in cranelift and call it from C.
+
+
+```shell
+otool -tV main.o # view assembly
+clang -c main.c -o caller.o
+clang caller.o main.o -o final_program
 ```
