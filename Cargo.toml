@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+pest = "2.8.0"
+pest_derive = "2.8.0"
 cranelift = "0.119.0"
 cranelift-module = "0.119.0"
 cranelift-native = "0.119.0"

@@ -1,0 +1,29 @@
+WHITESPACE = _{ " " | "\n" }
+COMMENT    = _{ "#" ~ (!NEWLINE ~ ANY)* }
+
+// simple atoms
+alpha      =  { 'a'..'z' | 'A'..'Z' }
+digit      =  { '0'..'9' }
+identifier = @{ alpha ~ (alpha | digit)* }
+number     = @{ digit+ }
+
+expression = {
+    function_call
+  | number
+  | identifier
+  | function_definition
+  | block
+}
+
+function_arguments = { expression ~ ("," ~ expression)* }
+function_call      = { identifier ~ "(" ~ function_arguments? ~ ")" }
+
+block = { "{" ~ assignment* ~ expression ~ "}" }
+
+ident_list          = { identifier ~ ("," ~ identifier)* }
+function_definition = { "|" ~ ident_list? ~ "|" ~ expression }
+
+assignment = { identifier ~ "=" ~ expression }
+
+program = _{ SOI ~ (assignment)* ~ EOI }
+

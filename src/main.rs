@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::Write;
 
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
+use cranelift::prelude::Configurable;
 
 use cranelift::{
     codegen::{
@@ -14,6 +15,8 @@ use cranelift::{
 use cranelift::codegen::{Context, settings};
 use cranelift_module::{Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
+
+mod parser;
 
 // fn run_program(code_buffer: &[u8]) {
 //     let mut buffer = memmap2::MmapOptions::new()
@@ -54,7 +57,7 @@ fn test() {
     // Signature for tempo_entry: takes a pointer, returns I64
     let mut sig_tempo_entry = Signature::new(CallConv::SystemV);
     sig_tempo_entry.params.push(AbiParam::new(pointer_type)); // Still takes the string pointer, though unused
-    sig_tempo_entry.returns.push(AbiParam::new(types::I64));   // Returns an integer
+    sig_tempo_entry.returns.push(AbiParam::new(types::I64)); // Returns an integer
 
     let mut func = Function::with_name_signature(UserFuncName::default(), sig_tempo_entry.clone());
 
@@ -99,7 +102,9 @@ fn test() {
         .declare_function("tempo_entry", Linkage::Export, &sig_tempo_entry)
         .unwrap();
     let mut ctx = Context::for_function(func);
-    obj_module.define_function(func_id_tempo_entry, &mut ctx).unwrap();
+    obj_module
+        .define_function(func_id_tempo_entry, &mut ctx)
+        .unwrap();
 
     let product = obj_module.finish();
     let obj_bytes = product.emit().unwrap();
