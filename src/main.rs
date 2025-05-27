@@ -15,7 +15,9 @@ use cranelift::{
 use cranelift::codegen::{Context, settings};
 use cranelift_module::{Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
+use parser::parse_file;
 
+mod ast;
 mod parser;
 
 // fn run_program(code_buffer: &[u8]) {
@@ -116,5 +118,8 @@ fn test() {
 }
 
 fn main() {
-    test();
+    let args: Vec<String> = std::env::args().collect();
+    let path = &args[1];
+
+    parse_file(path);
 }
