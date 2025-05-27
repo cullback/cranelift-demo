@@ -164,17 +164,21 @@ fn parse_function_definition<'a>(pair: Pair<'a, Rule>) -> Result<FunctionDefinit
     let fn_def_span = pair.as_span();
     let mut inner_pairs = pair.into_inner();
 
-    let thing = inner_pairs.next().unwrap();
-
     let mut parameters = Vec::new();
-    if thing.as_rule() == Rule::ident_list {
-        for ident_pair in params_list_pair.into_inner() {
-            parameters.push(parse_identifier(ident_pair)?);
+    // Peek at the next rule. If it's an ident_list, parse parameters.
+    // Otherwise, it's the body expression (for functions with no params).
+    if let Some(next_pair) = inner_pairs.peek() {
+        if next_pair.as_rule() == Rule::ident_list {
+            let params_list_pair = inner_pairs.next().unwrap(); // Consume it
+            for ident_pair in params_list_pair.into_inner() {
+                parameters.push(parse_identifier(ident_pair)?);
+            }
         }
     }
 
+    // The next pair must be the body expression
     let body_expr_pair =
-        next_inner_or_err(inner_pairs.by_ref(), "function_definition body expression")?;
+        next_inner_or_err(&mut inner_pairs, "function_definition body expression")?;
     let body = parse_expression(body_expr_pair)?;
 
     Ok(FunctionDefinition {
