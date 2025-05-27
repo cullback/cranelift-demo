@@ -2,8 +2,17 @@ use pest::{
     Span,
     iterators::{Pair, Pairs},
 };
+use std::collections::HashMap;
 
 use crate::parser::Rule;
+
+use cranelift::codegen::ir::{AbiParam, Function, Signature, UserFuncName, InstBuilder, Value, types};
+use cranelift::codegen::isa::CallConv;
+use cranelift::codegen::{Context, settings};
+use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
+use cranelift::prelude::Configurable; // For settings builder
+use cranelift_module::{Linkage, Module};
+use cranelift_object::{ObjectBuilder, ObjectModule};
 
 // AST Node types
 #[derive(Debug)]
@@ -300,6 +309,182 @@ pub fn parse_program<'a>(pairs: Pairs<'a, Rule>) -> Result<Program<'a>, String> 
 
     Ok(Program {
         assignments,
-        span: Span::new("", 0, 0).unwrap(),
+        span: Span::new("", 0, 0).unwrap(), // TODO: Calculate a proper span for the program
     })
+}
+
+// --- Cranelift Compilation ---
+
+fn compile_expression_to_value<'a, 'b>(
+    expr: &Expression<'a>,
+    builder: &mut FunctionBuilder<'b>,
+    module: &mut ObjectModule,
+    func_params_map: &HashMap<String, Value>, // Maps AST parameter names to Cranelift values
+    // diagnostics_span: Span, // For better error reporting if needed
+) -> Result<Value, String> {
+    match expr {
+        Expression::Number(num) => {
+            Ok(builder.ins().iconst(types::I64, num.value))
+        }
+        Expression::Identifier(ident) => {
+            func_params_map.get(&ident.name).copied().ok_or_else(|| {
+                format!(
+                    "Undefined identifier '{}' used as value at {:?}",
+                    ident.name, ident.span
+                )
+            })
+        }
+        Expression::FunctionCall(call) => {
+            // MVP: Only 'add' function is supported for now
+            if call.function_name.name == "add" {
+                if call.arguments.len() != 2 {
+                    return Err(format!(
+                        "'add' function expects 2 arguments, got {} at {:?}",
+                        call.arguments.len(),
+                        call.span
+                    ));
+                }
+                let arg0_val = compile_expression_to_value(
+                    &call.arguments[0],
+                    builder,
+                    module,
+                    func_params_map,
+                    // call.arguments[0]. // Need a way to get span from Expression enum
+                )?;
+                let arg1_val = compile_expression_to_value(
+                    &call.arguments[1],
+                    builder,
+                    module,
+                    func_params_map,
+                    // call.arguments[1]. // Need a way to get span from Expression enum
+                )?;
+
+                let mut sig_add = Signature::new(CallConv::SystemV);
+                sig_add.params.push(AbiParam::new(types::I64));
+                sig_add.params.push(AbiParam::new(types::I64));
+                sig_add.returns.push(AbiParam::new(types::I64));
+
+                let callee_add_id = module
+                    .declare_function("add", Linkage::Import, &sig_add)
+                    .map_err(|e| format!("Failed to declare 'add' function: {}", e))?;
+                let local_callee_add =
+                    module.declare_func_in_func(callee_add_id, builder.func);
+
+                let call_inst = builder.ins().call(local_callee_add, &[arg0_val, arg1_val]);
+                Ok(builder.inst_results(call_inst)[0])
+            } else {
+                Err(format!(
+                    "Unsupported function call to '{}' at {:?}",
+                    call.function_name.name, call.span
+                ))
+            }
+        }
+        Expression::Block(block) => {
+            // For MVP, blocks in `program/basic.rb`'s main function body don't have assignments.
+            // We only compile the final expression of the block.
+            if !block.assignments.is_empty() {
+                return Err(format!(
+                    "Assignments within blocks are not yet supported for compilation at {:?}",
+                    block.span
+                ));
+            }
+            compile_expression_to_value(&block.expression, builder, module, func_params_map)
+        }
+        Expression::FunctionDefinition(fd) => Err(format!(
+            "Nested function definitions are not supported for compilation at {:?}",
+            fd.span
+        )),
+    }
+}
+
+pub fn compile_program_to_object_bytes(program_ast: &Program) -> Result<Vec<u8>, String> {
+    // Find the 'main' function definition
+    let main_assignment = program_ast
+        .assignments
+        .iter()
+        .find(|a| a.identifier.name == "main")
+        .ok_or_else(|| "No 'main' function assignment found in the program".to_string())?;
+
+    let main_fn_def = match &*main_assignment.expression {
+        Expression::FunctionDefinition(fd) => fd,
+        _ => return Err(format!("'main' assignment at {:?} is not a function definition", main_assignment.span)),
+    };
+
+    if main_fn_def.parameters.len() != 1 {
+        return Err(format!(
+            "'main' function (at {:?}) must have exactly one parameter, found {}",
+            main_fn_def.span,
+            main_fn_def.parameters.len()
+        ));
+    }
+    let main_param_name = &main_fn_def.parameters[0].name;
+
+    // Setup Cranelift ISA
+    let mut flags_builder = settings::builder();
+    flags_builder.set("is_pic", "true").map_err(|e| format!("Failed to set is_pic: {}", e))?;
+    let isa_flags = settings::Flags::new(flags_builder);
+
+    let isa_builder = cranelift_native::builder()
+        .map_err(|e| format!("Failed to create cranelift_native builder: {}", e))?;
+    let isa = isa_builder
+        .finish(isa_flags)
+        .map_err(|e| format!("Failed to finish ISA building: {}", e))?;
+
+    // Setup Cranelift module
+    let mut obj_module = ObjectModule::new(
+        ObjectBuilder::new(
+            isa.clone(),
+            "tempo_module", // Arbitrary internal name for the object module
+            cranelift_module::default_libcall_names(),
+        )
+        .map_err(|e| format!("ObjectBuilder error: {}", e))?,
+    );
+
+    // Define signature for 'tempo_entry' (our compiled 'main')
+    // extern "C" int64_t tempo_entry(int64_t arg);
+    let mut sig_tempo_entry = Signature::new(CallConv::SystemV);
+    sig_tempo_entry.params.push(AbiParam::new(types::I64)); // input
+    sig_tempo_entry.returns.push(AbiParam::new(types::I64)); // output
+
+    let mut func = Function::with_name_signature(UserFuncName::default(), sig_tempo_entry.clone());
+    let mut func_ctx = FunctionBuilderContext::new();
+    let mut builder = FunctionBuilder::new(&mut func, &mut func_ctx);
+
+    let entry_block = builder.create_block();
+    builder.append_block_params_for_function_params(entry_block);
+    builder.switch_to_block(entry_block);
+    builder.seal_block(entry_block); // Seal block now that params are appended
+
+    // Map AST parameter name to Cranelift block parameter value
+    let mut func_params_map = HashMap::new();
+    let clif_param_val = builder.block_params(entry_block)[0];
+    func_params_map.insert(main_param_name.clone(), clif_param_val);
+
+    // Compile the body of the main function
+    let return_value = compile_expression_to_value(
+        &main_fn_def.body,
+        &mut builder,
+        &mut obj_module,
+        &func_params_map,
+        // main_fn_def.body.span(), // Need a way to get span from Expression enum
+    )?;
+
+    builder.ins().return_(&[return_value]);
+    builder.finalize();
+
+    // Declare and define 'tempo_entry'
+    let func_id_tempo_entry = obj_module
+        .declare_function("tempo_entry", Linkage::Export, &sig_tempo_entry)
+        .map_err(|e| format!("Failed to declare 'tempo_entry': {}", e))?;
+
+    let mut ctx = Context::for_function(func);
+    obj_module
+        .define_function(func_id_tempo_entry, &mut ctx)
+        .map_err(|e| format!("Failed to define 'tempo_entry': {}", e))?;
+
+    // Emit object code
+    let product = obj_module.finish();
+    product
+        .emit()
+        .map_err(|e| format!("Failed to emit object code: {}", e))
 }
