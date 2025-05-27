@@ -1,7 +1,9 @@
+use std::{fs::File, io::Write};
+
 use pest::Parser;
 use pest_derive::Parser;
 
-use crate::ast::parse_program;
+use crate::ast::{compile_program_to_object_bytes, parse_program};
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
@@ -17,13 +19,32 @@ pub fn parse_file(path: &str) {
         }
     };
 
-    match parse_program(pairs) {
-        Ok(ast_root) => {
-            // Pretty print the AST
-            println!("{:#?}", ast_root);
-        }
+    let ast_root = match parse_program(pairs) {
+        Ok(ast_root) => ast_root,
         Err(e) => {
             eprintln!("Error parsing file: {}", e);
+            std::process::exit(1);
+        }
+    };
+    match compile_program_to_object_bytes(&ast_root) {
+        Ok(obj_bytes) => {
+            let output_path = "tempo.o";
+            match File::create(output_path) {
+                Ok(mut file) => {
+                    if let Err(e) = file.write_all(&obj_bytes) {
+                        eprintln!("Error writing to {}: {}", output_path, e);
+                        std::process::exit(1);
+                    }
+                    println!("Successfully compiled to {}", output_path);
+                }
+                Err(e) => {
+                    eprintln!("Error creating file {}: {}", output_path, e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Compilation error: {}", e);
             std::process::exit(1);
         }
     }

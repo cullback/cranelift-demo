@@ -1,8 +1,8 @@
 use std::fs::File;
 use std::io::Write;
 
-use parser::parse_file;
-use ast::compile_program_to_object_bytes; // Import the new function
+use ast::compile_program_to_object_bytes;
+use parser::parse_file; // Import the new function
 
 mod ast;
 mod parser;
@@ -25,35 +25,5 @@ fn main() {
     // Let's assume for now that parse_file is updated like this in a previous step:
     // pub fn parse_file(path: &str) -> Result<crate::ast::Program<'_>, String> { ... }
 
-    match parse_file(path) {
-        Ok(ast_root) => {
-            // println!("{:#?}", ast_root); // Optionally print AST
-            match compile_program_to_object_bytes(&ast_root) {
-                Ok(obj_bytes) => {
-                    let output_path = "tempo.o";
-                    match File::create(output_path) {
-                        Ok(mut file) => {
-                            if let Err(e) = file.write_all(&obj_bytes) {
-                                eprintln!("Error writing to {}: {}", output_path, e);
-                                std::process::exit(1);
-                            }
-                            println!("Successfully compiled to {}", output_path);
-                        }
-                        Err(e) => {
-                            eprintln!("Error creating file {}: {}", output_path, e);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Compilation error: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Error parsing file: {}", e);
-            std::process::exit(1);
-        }
-    }
+    parse_file(path);
 }

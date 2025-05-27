@@ -6,7 +6,9 @@ use std::collections::HashMap;
 
 use crate::parser::Rule;
 
-use cranelift::codegen::ir::{AbiParam, Function, Signature, UserFuncName, InstBuilder, Value, types};
+use cranelift::codegen::ir::{
+    AbiParam, Function, InstBuilder, Signature, UserFuncName, Value, types,
+};
 use cranelift::codegen::isa::CallConv;
 use cranelift::codegen::{Context, settings};
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext};
@@ -320,12 +322,10 @@ fn compile_expression_to_value<'a, 'b>(
     builder: &mut FunctionBuilder<'b>,
     module: &mut ObjectModule,
     func_params_map: &HashMap<String, Value>, // Maps AST parameter names to Cranelift values
-    // diagnostics_span: Span, // For better error reporting if needed
+                                              // diagnostics_span: Span, // For better error reporting if needed
 ) -> Result<Value, String> {
     match expr {
-        Expression::Number(num) => {
-            Ok(builder.ins().iconst(types::I64, num.value))
-        }
+        Expression::Number(num) => Ok(builder.ins().iconst(types::I64, num.value)),
         Expression::Identifier(ident) => {
             func_params_map.get(&ident.name).copied().ok_or_else(|| {
                 format!(
@@ -367,8 +367,7 @@ fn compile_expression_to_value<'a, 'b>(
                 let callee_add_id = module
                     .declare_function("add", Linkage::Import, &sig_add)
                     .map_err(|e| format!("Failed to declare 'add' function: {}", e))?;
-                let local_callee_add =
-                    module.declare_func_in_func(callee_add_id, builder.func);
+                let local_callee_add = module.declare_func_in_func(callee_add_id, builder.func);
 
                 let call_inst = builder.ins().call(local_callee_add, &[arg0_val, arg1_val]);
                 Ok(builder.inst_results(call_inst)[0])
@@ -407,7 +406,12 @@ pub fn compile_program_to_object_bytes(program_ast: &Program) -> Result<Vec<u8>,
 
     let main_fn_def = match &*main_assignment.expression {
         Expression::FunctionDefinition(fd) => fd,
-        _ => return Err(format!("'main' assignment at {:?} is not a function definition", main_assignment.span)),
+        _ => {
+            return Err(format!(
+                "'main' assignment at {:?} is not a function definition",
+                main_assignment.span
+            ));
+        }
     };
 
     if main_fn_def.parameters.len() != 1 {
@@ -421,7 +425,9 @@ pub fn compile_program_to_object_bytes(program_ast: &Program) -> Result<Vec<u8>,
 
     // Setup Cranelift ISA
     let mut flags_builder = settings::builder();
-    flags_builder.set("is_pic", "true").map_err(|e| format!("Failed to set is_pic: {}", e))?;
+    flags_builder
+        .set("is_pic", "true")
+        .map_err(|e| format!("Failed to set is_pic: {}", e))?;
     let isa_flags = settings::Flags::new(flags_builder);
 
     let isa_builder = cranelift_native::builder()

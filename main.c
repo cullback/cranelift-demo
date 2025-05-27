@@ -27,12 +27,5 @@ int main() {
     result_val = tempo_entry(input_val); // Call the function
                                          // Expected: add(2, 10) = 12
     printf("C: Received result from tempo_entry: %lld\n", (long long)result_val);
-
-    int64_t input_val2 = 5;
-    printf("C: Calling Cranelift-generated function tempo_entry with %lld\n", (long long)input_val2);
-    result_val = tempo_entry(input_val2); // Call it again
-                                          // Expected: add(2, 5) = 7
-    printf("C: Received result from tempo_entry: %lld\n", (long long)result_val);
-
     return 0;
 }
