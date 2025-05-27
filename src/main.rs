@@ -41,9 +41,13 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 // }
 
 fn test() {
-    let builder = settings::builder();
+    let mut flags_builder = settings::builder();
+    // Enable Position Independent Code (PIC)
+    flags_builder.set("is_pic", "true").unwrap();
+    let isa_flags = settings::Flags::new(flags_builder);
+
     let isa_builder = cranelift_native::builder().unwrap();
-    let isa = isa_builder.finish(settings::Flags::new(builder)).unwrap();
+    let isa = isa_builder.finish(isa_flags).unwrap();
 
     let pointer_type = isa.pointer_type();
 
