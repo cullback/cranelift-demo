@@ -47,11 +47,12 @@ fn test() {
 
     let pointer_type = isa.pointer_type();
 
-    let mut sig = Signature::new(CallConv::SystemV);
-    sig.params.push(AbiParam::new(pointer_type));
-    sig.returns.push(AbiParam::new(pointer_type));
+    // Signature for tempo_entry: takes a pointer, returns I64
+    let mut sig_tempo_entry = Signature::new(CallConv::SystemV);
+    sig_tempo_entry.params.push(AbiParam::new(pointer_type)); // Still takes the string pointer, though unused
+    sig_tempo_entry.returns.push(AbiParam::new(types::I64));   // Returns an integer
 
-    let mut func = Function::with_name_signature(UserFuncName::default(), sig.clone());
+    let mut func = Function::with_name_signature(UserFuncName::default(), sig_tempo_entry.clone());
 
     let mut func_ctx = FunctionBuilderContext::new();
     let mut builder = FunctionBuilder::new(&mut func, &mut func_ctx);
@@ -62,10 +63,9 @@ fn test() {
     builder.append_block_params_for_function_params(block);
     builder.switch_to_block(block);
 
-    let arg = builder.block_params(block)[0];
-    // Simply return the argument pointer
-    builder.ins().return_(&[arg]);
-    builder.finalize();
+    // Signature for the C function get_two_from_c: takes nothing, returns I64
+    let mut sig_get_two = Signature::new(CallConv::SystemV);
+    sig_get_two.returns.push(AbiParam::new(types::I64));
 
     let mut obj_module = ObjectModule::new(
         ObjectBuilder::new(
@@ -76,11 +76,26 @@ fn test() {
         .unwrap(),
     );
 
-    let func_id = obj_module
-        .declare_function("tempo_entry", Linkage::Export, &sig)
+    // Declare get_two_from_c as an imported function
+    let callee_get_two_id = obj_module
+        .declare_function("get_two_from_c", Linkage::Import, &sig_get_two)
+        .unwrap();
+    let local_callee_get_two = obj_module.declare_func_in_func(callee_get_two_id, builder.func);
+
+    // Call get_two_from_c()
+    let call_inst = builder.ins().call(local_callee_get_two, &[]);
+    let call_result = builder.inst_results(call_inst)[0];
+
+    // Return the result of the call
+    builder.ins().return_(&[call_result]);
+    builder.finalize();
+
+    // Declare tempo_entry as an exported function
+    let func_id_tempo_entry = obj_module
+        .declare_function("tempo_entry", Linkage::Export, &sig_tempo_entry)
         .unwrap();
     let mut ctx = Context::for_function(func);
-    obj_module.define_function(func_id, &mut ctx).unwrap();
+    obj_module.define_function(func_id_tempo_entry, &mut ctx).unwrap();
 
     let product = obj_module.finish();
     let obj_bytes = product.emit().unwrap();
