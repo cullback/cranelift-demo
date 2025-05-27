@@ -15,30 +15,30 @@ use cranelift::codegen::{Context, settings};
 use cranelift_module::{Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
-fn run_program(code_buffer: &[u8]) {
-    let mut buffer = memmap2::MmapOptions::new()
-        .len(code_buffer.len())
-        .map_anon()
-        .unwrap();
-    buffer.copy_from_slice(code_buffer);
-    let buffer = buffer.make_exec().unwrap();
-    let x = unsafe {
-        let code_fn: unsafe extern "C" fn(usize) -> usize = std::mem::transmute(buffer.as_ptr());
+// fn run_program(code_buffer: &[u8]) {
+//     let mut buffer = memmap2::MmapOptions::new()
+//         .len(code_buffer.len())
+//         .map_anon()
+//         .unwrap();
+//     buffer.copy_from_slice(code_buffer);
+//     let buffer = buffer.make_exec().unwrap();
+//     let x = unsafe {
+//         let code_fn: unsafe extern "C" fn(usize) -> usize = std::mem::transmute(buffer.as_ptr());
 
-        code_fn(1)
-    };
-    println!("out: {}", x);
-}
+//         code_fn(1)
+//     };
+//     println!("out: {}", x);
+// }
 
-fn dump_to_binary() {
-    // read binary with:
-    // `/opt/homebrew/opt/binutils/bin/gobjdump -D -b binary -m aarch64 dump.bin`
+// fn dump_to_binary() {
+//     // read binary with:
+//     // `/opt/homebrew/opt/binutils/bin/gobjdump -D -b binary -m aarch64 dump.bin`
 
-    // let mut ctx = Context::for_function(func);
-    // let code = ctx.compile(&*isa, &mut ControlPlane::default()).unwrap();
+//     // let mut ctx = Context::for_function(func);
+//     // let code = ctx.compile(&*isa, &mut ControlPlane::default()).unwrap();
 
-    // std::fs::write("dump.bin", code.code_buffer()).unwrap();
-}
+//     // std::fs::write("dump.bin", code.code_buffer()).unwrap();
+// }
 
 fn test() {
     let mut sig = Signature::new(CallConv::SystemV);
@@ -60,15 +60,10 @@ fn test() {
     let v1 = builder.ins().iconst(types::I64, 5);
     let v2 = builder.ins().iadd(arg, v1);
     builder.ins().return_(&[v2]);
-
     builder.finalize();
 
-    println!("{}", func.display());
-
     let builder = settings::builder();
-    let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
-        panic!("host machine is not supported: {}", msg);
-    });
+    let isa_builder = cranelift_native::builder().unwrap();
     let isa = isa_builder.finish(settings::Flags::new(builder)).unwrap();
 
     let mut obj_module = ObjectModule::new(
