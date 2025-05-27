@@ -41,9 +41,15 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 // }
 
 fn test() {
+    let builder = settings::builder();
+    let isa_builder = cranelift_native::builder().unwrap();
+    let isa = isa_builder.finish(settings::Flags::new(builder)).unwrap();
+
+    let pointer_type = isa.pointer_type();
+
     let mut sig = Signature::new(CallConv::SystemV);
-    sig.params.push(AbiParam::new(types::I64));
-    sig.returns.push(AbiParam::new(types::I64));
+    sig.params.push(AbiParam::new(pointer_type));
+    sig.returns.push(AbiParam::new(pointer_type));
 
     let mut func = Function::with_name_signature(UserFuncName::default(), sig.clone());
 
@@ -57,14 +63,9 @@ fn test() {
     builder.switch_to_block(block);
 
     let arg = builder.block_params(block)[0];
-    let v1 = builder.ins().iconst(types::I64, 5);
-    let v2 = builder.ins().iadd(arg, v1);
-    builder.ins().return_(&[v2]);
+    // Simply return the argument pointer
+    builder.ins().return_(&[arg]);
     builder.finalize();
-
-    let builder = settings::builder();
-    let isa_builder = cranelift_native::builder().unwrap();
-    let isa = isa_builder.finish(settings::Flags::new(builder)).unwrap();
 
     let mut obj_module = ObjectModule::new(
         ObjectBuilder::new(
