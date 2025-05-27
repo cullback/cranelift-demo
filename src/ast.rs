@@ -359,18 +359,8 @@ fn compile_expression_to_value<'a, 'b>(
                     // call.arguments[1]. // Need a way to get span from Expression enum
                 )?;
 
-                let mut sig_add = Signature::new(CallConv::SystemV);
-                sig_add.params.push(AbiParam::new(types::I64));
-                sig_add.params.push(AbiParam::new(types::I64));
-                sig_add.returns.push(AbiParam::new(types::I64));
-
-                let callee_add_id = module
-                    .declare_function("add", Linkage::Import, &sig_add)
-                    .map_err(|e| format!("Failed to declare 'add' function: {}", e))?;
-                let local_callee_add = module.declare_func_in_func(callee_add_id, builder.func);
-
-                let call_inst = builder.ins().call(local_callee_add, &[arg0_val, arg1_val]);
-                Ok(builder.inst_results(call_inst)[0])
+                // Directly emit an iadd instruction
+                Ok(builder.ins().iadd(arg0_val, arg1_val))
             } else {
                 Err(format!(
                     "Unsupported function call to '{}' at {:?}",
