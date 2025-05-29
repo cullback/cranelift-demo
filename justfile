@@ -3,6 +3,6 @@ build PROGRAM_PATH:
     clang -c main.c -o platform.o
     clang platform.o tempo.o -o main
 
-run PROGRAM_PATH:
+run PROGRAM_PATH arg:
     just build {{PROGRAM_PATH}}
-    ./main
+    ./main {{arg}}
