@@ -6,18 +6,6 @@
 // Expected C signature: int64_t tempo_entry(int64_t a);
 extern int64_t tempo_entry(int64_t arg);
 
-// The 'add' function is no longer called by Cranelift-generated code for 'program/basic.rb',
-// as 'add' is now handled directly by an iadd instruction.
-// It can be removed or kept if other C code uses it, or for future potential external calls.
-/*
-int64_t add(int64_t a, int64_t b) {
-    printf("C: add(%lld, %lld) called\n", (long long)a, (long long)b);
-    return a + b;
-}
-*/
-
-// The get_two_from_c function is no longer called by the current Cranelift code.
-// It can be kept or removed. For now, let's keep it to avoid breaking old states if any.
 int64_t get_two_from_c() {
     printf("C: get_two_from_c() called (Note: This function might be unused by current tempo.o)\n");
     return 2;
